@@ -1,0 +1,323 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>示例</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="app.css" type="text/css" />
+    <!-- IE Fix for HTML5 Tags -->
+    <!--[if lt IE 9]>
+    <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    
+    <link rel="stylesheet" href="leaflet.css" type="text/css" />   
+    <script type="text/javascript" src="leaflet.js"></script>
+<style>
+	#map {
+    bottom: 0;
+    height: 100%;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 100%;
+}
+	</style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+</head>
+<body>
+    <div id="storage-ui-container"></div>
+  
+    <div id="storage-tooltip-container"></div>  
+    
+    <div id="map" ></div>
+
+    <script>
+    	
+    	L.DomUtil.add = function(tagName, className, container, content) {
+	var el = L.DomUtil.create(tagName, className, container);
+	if (content) {
+		if (content.nodeType && content.nodeType === 1) {
+			el.appendChild(content);
+		} else {
+			el.innerHTML = content;
+		}
+	}
+	return el;
+};
+
+
+
+L.Map.include({initTileLayers: function() {
+		this.tilelayers = Array();
+		for (var i in this.options.tilelayers) {
+			if (this.options.tilelayers.hasOwnProperty(i)) {
+				this.tilelayers.push(this.createTileLayer(this.options.tilelayers[i]));
+				if (this.options.tilelayer && this.options.tilelayer.url_template === this.options.tilelayers[i].url_template) {
+					this.options.tilelayer.attribution = this.options.tilelayers[i].attribution;
+				}
+			}
+		}
+		if (this.options.tilelayer && this.options.tilelayer.url_template && this.options.tilelayer.attribution) {
+			this.customTilelayer = this.createTileLayer(this.options.tilelayer);
+			this.selectTileLayer(this.customTilelayer);
+		} else {
+			this.selectTileLayer(this.tilelayers[0]);
+		}
+	},
+	createTileLayer: function(tilelayer) {
+		return new L.TileLayer(tilelayer.url_template, tilelayer);
+	},
+	selectTileLayer: function(tilelayer) {
+		if (tilelayer === this.selected_tilelayer) {
+			return;
+		}
+		try {
+			this.fire('baselayerchange', {
+				layer: tilelayer
+			});
+			this.addLayer(tilelayer);
+			if (this.selected_tilelayer) {
+				this.removeLayer(this.selected_tilelayer);
+			}
+			this.selected_tilelayer = tilelayer;
+			if (!isNaN(this.selected_tilelayer.options.minZoom) && this.getZoom() < this.selected_tilelayer.options.minZoom) {
+				this.setZoom(this.selected_tilelayer.options.minZoom);
+			}
+			if (!isNaN(this.selected_tilelayer.options.maxZoom) && this.getZoom() > this.selected_tilelayer.options.maxZoom) {
+				this.setZoom(this.selected_tilelayer.options.maxZoom);
+			}
+		} catch(e) {
+			console.log(e.message, e.name);
+			this.removeLayer(tilelayer);
+			L.S.fire('ui:alert', {
+				content: L._('Error in the tilelayer URL') + ': ' + tilelayer._url,
+				level: 'error'
+			});
+		}
+	},
+	eachTileLayer: function(method, context) {
+		var urls = [];
+		for (var i in this.tilelayers) {
+			if (this.tilelayers.hasOwnProperty(i)) {
+				method.call(context, this.tilelayers[i]);
+				urls.push(this.tilelayers[i]._url);
+			}
+		}
+		if (this.customTilelayer && (Array.prototype.indexOf && urls.indexOf(this.customTilelayer._url) === -1)) {
+			method.call(context || this, this.customTilelayer);
+		}
+	}});
+
+    	L.NongZiSingleton = L.Class.extend({
+	includes: L.Mixin.Events,
+	version: '0.6.0'
+});
+
+L.NZ = new L.NongZiSingleton();
+L.NZ.on('ui:start',
+function(e) {
+	var container = L.DomUtil.get('storage-ui-container');
+	container.className = '';
+	container.innerHTML = '';
+	var actionsContainer = L.DomUtil.create('ul', 'toolbox', container);
+	var body = L.DomUtil.create('div', 'body', container);
+	if (e.data.html.nodeType && e.data.html.nodeType === 1) {
+		body.appendChild(e.data.html);
+	} else {
+		body.innerHTML = e.data.html;
+	}
+	L.DomUtil.addClass(document.body, 'storage-ui');
+	var closeLink = L.DomUtil.create('li', 'storage-close-link', actionsContainer);
+	L.DomUtil.add('i', 'storage-close-icon', closeLink);
+	var label = L.DomUtil.create('span', '', closeLink);
+	label.title = label.innerHTML = '关闭';
+	if (e.actions) {
+		for (var i = 0; i < e.actions.length; i++) {
+			actionsContainer.appendChild(e.actions[i]);
+		}
+	}
+	if (e.cssClass) {
+		L.DomUtil.addClass(container, e.cssClass);
+	}
+	L.NZ.fire('ui:ready');
+	var close = function() {
+		L.NZ.fire('ui:end');
+	};
+	L.DomEvent.on(closeLink, 'click', close);
+});
+L.NZ.on('ui:end',
+function(e) {
+	var div = L.DomUtil.get('storage-ui-container');
+	div.innerHTML = '';
+	L.DomUtil.removeClass(document.body, 'storage-ui');
+	L.NZ.fire('ui:closed');
+});
+L.NZ.on('ui:tooltip',
+function(e) {
+	var div = L.DomUtil.get('storage-tooltip-container');
+	var body = document.getElementsByTagName('body')[0];
+	div.innerHTML = "";
+	div.innerHTML = e.content;
+	L.DomUtil.addClass(body, 'storage-tooltip');
+	var map = L.DomUtil.get('map'),
+	left = map.offsetLeft + (map.clientWidth / 2) - (div.clientWidth / 2),
+	top = map.offsetTop + 5,
+	point = L.point(left, top);
+	L.DomUtil.setPosition(div, point);
+	var close = function(e) {
+		div.innerHTML = "";
+		L.DomUtil.removeClass(body, 'storage-tooltip');
+	};
+	L.DomEvent.on(div, 'mouseover', close);
+	window.setTimeout(close, 3000);
+});
+
+L.Control.EasyButtons = L.Control.extend({
+    options: {
+        position: 'topleft',
+        title: '',
+        intentedIcon: 'fa-circle-o'
+    },
+
+    onAdd: function () {
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+
+        this.link = L.DomUtil.create('a', 'leaflet-bar-part', container);
+        L.DomUtil.create('i', 'fa fa-lg ' + this.options.intentedIcon , this.link);
+        this.link.href = '#';
+
+        L.DomEvent.on(this.link, 'click', this._click, this);
+        this.link.title = this.options.title;
+				L.DomEvent.on(this.link, 'mouseover',
+						function(e) {
+							L.NZ.fire('ui:tooltip', {
+								content: 'werwer'
+							});
+						});
+        return container;
+    },
+    
+    intendedFunction: function(){ alert('no function selected');},
+  
+    _click: function (e) {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        this.intendedFunction();
+        var browserContainer = L.DomUtil.create('div', 'storage-browse-data');
+        L.NZ.fire('ui:start', {
+			data: {
+				html: browserContainer
+			}
+		});
+    },
+});
+
+L.easyButton = function( btnIcon , btnFunction , btnTitle , btnMap ) {
+  var newControl = new L.Control.EasyButtons;
+  if (btnIcon) newControl.options.intentedIcon = btnIcon;
+  
+  if ( typeof btnFunction === 'function'){
+    newControl.intendedFunction = btnFunction;
+  } 
+  
+  if (btnTitle) newControl.options.title = btnTitle;
+  
+  if ( btnMap ){
+    newControl.addTo(btnMap);
+  } else {
+    newControl.addTo(map);
+  }
+  return newControl;
+};
+L.NZ.TileLayerControl = L.Control.extend({
+	options: {
+		position: 'topright'
+	},
+	onAdd: function(map) {
+		var container = L.DomUtil.create('div', 'leaflet-control-tilelayers storage-control');
+		var link = L.DomUtil.create('a', '', container);
+		link.href = '#';
+		link.title = 'Change map background';
+		L.DomEvent.on(link, 'click', L.DomEvent.stopPropagation).on(link, 'click', L.DomEvent.preventDefault).on(link, 'click', this.openSwitcher, this).on(link, 'dblclick', L.DomEvent.stopPropagation);
+		return container;
+	},
+	openSwitcher: function(options) {
+		var self = this;
+		this._tilelayers_container = L.DomUtil.create('ul', 'storage-tilelayer-switcher-container');
+		this.buildList(options);
+	},
+	buildList: function(options) {
+		this._map.eachTileLayer(function(tilelayer) {
+			this.addTileLayerElement(tilelayer, options);
+		},
+		this);
+		L.NZ.fire('ui:start', {
+			data: {
+				html: this._tilelayers_container
+			}
+		});
+	},
+	addTileLayerElement: function(tilelayer, options) {
+		var selectedClass = this._map.hasLayer(tilelayer) ? 'selected': '',
+		el = L.DomUtil.create('li', selectedClass, this._tilelayers_container),
+		img = L.DomUtil.create('img', '', el),
+		name = L.DomUtil.create('div', '', el);
+		this._map.demoTileInfos= {
+		s: tilelayer.options.subdomains[0],
+		z: 9,
+		x: 421,
+		y: 193
+	};
+		img.src = L.Util.template(tilelayer.options.url_template, this._map.demoTileInfos);
+		name.innerHTML = tilelayer.options.name;
+		L.DomEvent.on(el, 'click',
+		function(e) {
+			this._map.selectTileLayer(tilelayer);
+			L.NZ.fire('ui:end');
+			if (options && options.callback) {
+				options.callback(tilelayer);
+			}
+		},
+		this);
+	}
+});
+
+
+
+			var map = L.map('map', {"tilelayers": [
+   {
+    "attribution": "\u00a9 OSM Contributors",
+    "name": "高德地图",
+    "url_template": "http://{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+    "subdomains": ["webrd01", "webrd02", "webrd03", "webrd04"],
+    "zIndex":1,
+    "selected": true,
+    "rank": 1,
+    "minZoom": 0,
+    "maxZoom": 18,
+    "id": 1
+   },
+   {
+    "name": "天地图影像",
+    "url_template": "http://t{s}.tianditu.cn/DataServer?T=img_w&X={x}&Y={y}&L={z}",
+    "subdomains": ['0', '1', '2', '3', '4', '5', '6', '7'],
+    "rank": 2,
+    "minZoom": 0,
+    "maxZoom": 18,
+    "id": 4
+   }
+  ]}).setView([34, 120], 4);
+			var gaodeilayer = L.tileLayer('http://{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+			    subdomains: ["webrd01", "webrd02", "webrd03", "webrd04"],
+			    zIndex: 1
+			});
+			//gaodeilayer.addTo(map);
+			var TileLayerControl= new L.NZ.TileLayerControl().addTo(map);
+      L.easyButton('fa-comment', 
+              function (){},
+             'test',map
+            );
+  map.initTileLayers();
+  </script> 
+</body>
+</html>
